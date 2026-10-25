@@ -353,10 +353,15 @@ def transform_holdings_data(holdings_data):
         else:
             pnlpercent = round((last_price - average_price) / average_price * 100, 2)
 
+        # Kite keeps shares bought yesterday in t1_quantity, apart from the
+        # settled quantity, so the day after a buy quantity alone reads 0.
+        t1_quantity = _to_int(holdings.get("t1_quantity", 0))
+
         transformed_position = {
             "symbol": holdings.get("tradingsymbol", ""),
             "exchange": holdings.get("exchange", ""),
-            "quantity": _to_int(holdings.get("quantity", 0)),
+            "quantity": _to_int(holdings.get("quantity", 0)) + t1_quantity,
+            "t1_quantity": t1_quantity,
             "product": holdings.get("product", ""),
             "average_price": average_price,
             # Kite calls it last_price. It was already being read to derive
@@ -408,10 +413,13 @@ def calculate_portfolio_statistics(holdings_data):
     # or pnl used to fail the entire holdings request rather than one row.
     holdings_data = holdings_data or []
     totalholdingvalue = sum(
-        _to_float(item.get("last_price")) * _to_int(item.get("quantity")) for item in holdings_data
+        _to_float(item.get("last_price"))
+        * (_to_int(item.get("quantity")) + _to_int(item.get("t1_quantity")))
+        for item in holdings_data
     )
     totalinvvalue = sum(
-        _to_float(item.get("average_price")) * _to_int(item.get("quantity"))
+        _to_float(item.get("average_price"))
+        * (_to_int(item.get("quantity")) + _to_int(item.get("t1_quantity")))
         for item in holdings_data
     )
     totalprofitandloss = sum(_to_float(item.get("pnl")) for item in holdings_data)
