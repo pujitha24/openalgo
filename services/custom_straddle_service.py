@@ -85,7 +85,9 @@ def get_custom_straddle_simulation(
         elif exchange.upper() in NO_SPOT_EXCHANGES:
             # MCX and the currency segments have no tradable spot, so the
             # near-month future is both the quote and the history reference.
-            _resolved = resolve_underlying_quote(base_symbol, exchange.upper())
+            _resolved = resolve_underlying_quote(
+                base_symbol, exchange.upper(), option_expiry=expiry_date
+            )
             if _resolved is None:
                 return (
                     False,

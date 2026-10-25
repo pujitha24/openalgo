@@ -154,7 +154,9 @@ def get_straddle_chart_data(
             # MCX and the currency segments have no tradable spot: the near-month
             # future is the pricing reference. Without this the quote is fetched
             # for a symbol that does not exist and the tool renders empty.
-            _resolved = resolve_underlying_quote(base_symbol, exchange.upper())
+            _resolved = resolve_underlying_quote(
+                base_symbol, exchange.upper(), option_expiry=expiry_date
+            )
             if _resolved is None:
                 return (
                     False,

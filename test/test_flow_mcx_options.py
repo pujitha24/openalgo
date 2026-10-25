@@ -112,7 +112,9 @@ class TestAtmReferenceForNoSpotExchanges:
 
         monkeypatch.setattr(oss, "get_quotes", fake_quotes)
         monkeypatch.setattr(
-            oss, "resolve_underlying_quote", lambda base, exch: ("CRUDEOIL21SEP26FUT", "MCX")
+            oss,
+            "resolve_underlying_quote",
+            lambda base, exch, option_expiry=None: ("CRUDEOIL21SEP26FUT", "MCX"),
         )
         monkeypatch.setattr(oss, "get_available_strikes", lambda *a, **k: [7400.0, 7500.0, 7600.0])
         # Stubbed so the assertion is about routing, not about which contracts
@@ -163,7 +165,9 @@ class TestAtmReferenceForNoSpotExchanges:
         """
         import services.option_symbol_service as oss
 
-        monkeypatch.setattr(oss, "resolve_underlying_quote", lambda base, exch: None)
+        monkeypatch.setattr(
+            oss, "resolve_underlying_quote", lambda base, exch, option_expiry=None: None
+        )
         monkeypatch.setattr(
             oss,
             "get_quotes",

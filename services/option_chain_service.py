@@ -402,7 +402,9 @@ def get_option_chain(
             # nothing and the chain comes back with no underlying price at all.
             # The near-month future is the pricing reference instead.
             quote_exchange = exchange.upper()
-            resolved = resolve_underlying_quote(base_symbol, quote_exchange)
+            resolved = resolve_underlying_quote(
+                base_symbol, quote_exchange, option_expiry=final_expiry
+            )
             if resolved is None:
                 return (
                     False,

@@ -36,7 +36,7 @@ Example Usage (OLD METHOD - Legacy):
 import importlib
 import math
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from database.auth_db import get_auth_token_broker
@@ -127,8 +127,16 @@ def clear_strikes_cache():
 NO_SPOT_EXCHANGES = frozenset({"MCX", "CDS", "BCD", "NCDEX", "NCO"})
 
 
-def find_near_month_futures(base_symbol: str, exchange: str) -> dict[str, Any] | None:
+def find_near_month_futures(
+    base_symbol: str, exchange: str, on_or_after: date | None = None
+) -> dict[str, Any] | None:
     """Nearest non-expired FUT contract for a base symbol on an exchange.
+
+    When ``on_or_after`` is given (an option expiry), the first future expiring
+    on or after that date is returned instead: the contract the option is
+    priced off. MCX options expire a few days before their own future, so
+    CRUDEOIL 17NOV26 options belong to CRUDEOIL26NOVFUT, not to a nearer
+    October future.
 
     The ATM-pricing source for option chains on exchanges with no spot: the
     caller asks for ``CRUDEOIL`` and gets ``CRUDEOIL19AUG26FUT``, whichever
@@ -146,6 +154,8 @@ def find_near_month_futures(base_symbol: str, exchange: str) -> dict[str, Any] |
     Args:
         base_symbol: Product base, e.g. "CRUDEOIL", "GOLD".
         exchange: Exchange to search, e.g. "MCX".
+        on_or_after: Option expiry the future must not precede. Today is used
+            when this is None or earlier than today.
 
     Returns:
         ``{"symbol", "exchange", "expiry"}`` for the nearest contract, or None
@@ -173,6 +183,7 @@ def find_near_month_futures(base_symbol: str, exchange: str) -> dict[str, Any] |
 
     exact = re.compile(rf"^{re.escape(base)}\d{{2}}[A-Z]{{3}}\d{{2}}FUT$")
     today = datetime.now().date()
+    floor = max(today, on_or_after) if on_or_after else today
 
     candidates = []
     for row in rows:
@@ -182,7 +193,7 @@ def find_near_month_futures(base_symbol: str, exchange: str) -> dict[str, Any] |
             expiry = datetime.strptime(row.expiry, "%d-%b-%y").date()
         except (ValueError, TypeError):
             continue
-        if expiry >= today:
+        if expiry >= floor:
             candidates.append((expiry, row))
 
     if not candidates:
@@ -193,8 +204,25 @@ def find_near_month_futures(base_symbol: str, exchange: str) -> dict[str, Any] |
     return {"symbol": row.symbol, "exchange": row.exchange, "expiry": row.expiry}
 
 
-def resolve_underlying_quote(base_symbol: str, exchange: str) -> tuple[str, str] | None:
+def _parse_option_expiry(option_expiry: str | None) -> date | None:
+    """'17NOV26' or '17-NOV-26' -> date, or None when missing or unparseable."""
+    if not option_expiry:
+        return None
+    try:
+        return datetime.strptime(
+            str(option_expiry).strip().upper().replace("-", ""), "%d%b%y"
+        ).date()
+    except ValueError:
+        return None
+
+
+def resolve_underlying_quote(
+    base_symbol: str, exchange: str, option_expiry: str | None = None
+) -> tuple[str, str] | None:
     """The (symbol, exchange) to quote for a chain's underlying reference.
+
+    Pass ``option_expiry`` (DDMMMYY) when it is known so that no-spot exchanges
+    price the option off its own futures month.
 
     Returns None when an exchange that needs a future has none available, so
     the caller can say why rather than fetching a quote for a symbol that does
@@ -204,7 +232,11 @@ def resolve_underlying_quote(base_symbol: str, exchange: str) -> tuple[str, str]
     if exch not in NO_SPOT_EXCHANGES:
         return (base_symbol, exch)
 
-    fut = find_near_month_futures(base_symbol, exch)
+    on_or_after = _parse_option_expiry(option_expiry)
+    if on_or_after is None:
+        fut = find_near_month_futures(base_symbol, exch)
+    else:
+        fut = find_near_month_futures(base_symbol, exch, on_or_after=on_or_after)
     if fut is None:
         return None
     return (fut["symbol"], fut["exchange"])
@@ -856,7 +888,9 @@ def get_option_symbol(
             # option chain, the IV surface and the straddle charts already do --
             # without this the LTP lookup asked MCX for a symbol that cannot
             # exist and the order failed with "Could not determine LTP".
-            resolved = resolve_underlying_quote(base_symbol, exchange.upper())
+            resolved = resolve_underlying_quote(
+                base_symbol, exchange.upper(), option_expiry=final_expiry
+            )
             if not resolved:
                 return (
                     False,
